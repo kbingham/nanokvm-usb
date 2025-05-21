@@ -7,6 +7,9 @@ import threading
 from enum import IntEnum
 from typing import List
 
+from gui import Gui
+
+
 """
 See:
  - https://github.com/sipeed/NanoKVM-USB/blob/main/desktop/src/main/device/serial-port.ts
@@ -174,12 +177,13 @@ class NanoKVM(object):
         rsp = CmdPacket(-1, -1, list(raw))
         return InfoPacket(rsp.DATA)
 
+    def send_hid_report(self, data) -> None:
+        pkt = CmdPacket(self.addr, CmdEvent.SEND_KB_GENERAL_DATA, data[:8]).encode()
+        self.serial_port.write(bytes(pkt))
 
     def send_keyboard_data(self, modifier: int, key: int) -> None:
         data = [modifier, 0x00, 0x00, 0x00, key, 0x00, 0x00, 0x00]
-        pkt = CmdPacket(self.addr, CmdEvent.SEND_KB_GENERAL_DATA, data).encode()
-        self.serial_port.write(bytes(pkt))
-
+        self.send_hid_report(data)
 
     def send_mouse_relative_data(self, key: int, x: int, y: int, scroll: int) -> None:
         x_b = int_to_byte(x)
@@ -257,29 +261,7 @@ This is a work in progress.
 
     print(nano.get_info())
 
-    def send_char(ch):
-        # rough mapping for letters, digits, punctuation…
-        keymap = {
-            'h': 0x0b, 'e': 0x08, 'l': 0x0f, 'o': 0x12,
-            '!': 0x1e  # “1” key + Shift
-        }
-        # determine if shift is needed
-        if ch.isupper() or ch in "!@#$%^&*()_+{}:\"<>?":
-            mod = 0x02  # Left Shift
-            kc  = keymap[ch.lower() if ch.isalpha() else ch]
-        else:
-            mod = 0x00
-            kc  = keymap[ch]
-
-        logging.info("Sending: {}".format(ch))
-
-        nano.send_keyboard_data(mod, kc)
-        # send a “release” (modifier=0, key=0) so the host sees key‐up
-        nano.send_keyboard_data(0, 0)
-    
-    # type “Hello!”
-    for c in "Hello!":
-        send_char(c)
+    Gui.launch(nano)
 
     # Restore previous settings if we can
     ser.apply_settings(settings)
