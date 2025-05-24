@@ -62,36 +62,51 @@ class KeyCaptureWindow(QMainWindow):
         # ensure we get key events
         self.setFocusPolicy(Qt.StrongFocus)
 
+        # We can send up to 6 keys according to the HID spec.
+        self.pressed_keys = set()
+
+    def emitHidReport(self):
+        modifier_byte = 0
+        keycodes = []
+
+        for key in self.pressed_keys:
+            hid_code = qt_to_hid_int_map.get(key)
+            if hid_code is None:
+                name = qt_key_code_to_name(key)
+                print(f"Unhandled key event : {key} {name}")
+                continue
+            if 0xE0 <= hid_code <= 0xE7:
+                # Modifier range
+                modifier_byte |= 1 << (hid_code - 0xE0)
+            else:
+                if len(keycodes) < 6:
+                    keycodes.append(hid_code)
+
+        # Pad with 0x00s to fill 6 slots
+        while len(keycodes) < 6:
+            keycodes.append(0)
+
+        # Build 8-byte HID report
+        data = [modifier_byte, 0x00] + keycodes[:6]
+        self.device.send_hid_report(data)
 
     def keyPressEvent(self, event):
         if event.isAutoRepeat():
             return
 
-        # build modifier byte
-        mod = 0x00
-        if event.modifiers() & Qt.ShiftModifier:
-            mod |= 0x02        # Left Shift
-        if event.modifiers() & Qt.ControlModifier:
-            mod |= 0x01        # Left Ctrl
-        if event.modifiers() & Qt.AltModifier:
-            mod |= 0x04        # Left Alt
-        # you can add GUI (Win) or right‐side bits similarly
+        qt_key = event.key()
+        self.pressed_keys.add(qt_key)
+        self.emitHidReport()
 
-        key = event.key()
-        hid_code = qt_to_hid_int_map.get(key)
-        name = qt_key_code_to_name(key)
-
-        if hid_code:
-            print(f"Sending key {name} as {hid_code}")
-            self.device.send_keyboard_data(mod, hid_code)
-        else:
-            key = event.key()
-            name = qt_key_code_to_name(key)
-            print(f"Unhandled key event : {key} {name}")
 
     def keyReleaseEvent(self, event):
-        # send a “release” so host sees key-up
-        self.device.send_keyboard_data(0x00, 0x00)
+        if event.isAutoRepeat():
+            return
+
+        qt_key = event.key()
+        self.pressed_keys.discard(qt_key)
+        self.emitHidReport()
+
 
 class Gui(object):
     def launch(device):
