@@ -178,6 +178,7 @@ class NanoKVM(object):
         return InfoPacket(rsp.DATA)
 
     def send_hid_report(self, data) -> None:
+        #print("HID REPORT DATA: ", [hex(b) for b in data])
         pkt = CmdPacket(self.addr, CmdEvent.SEND_KB_GENERAL_DATA, data[:8]).encode()
         self.serial_port.write(bytes(pkt))
 
